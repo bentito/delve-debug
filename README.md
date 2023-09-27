@@ -14,22 +14,22 @@ This project facilitates the debugging of Go applications running in Kubernetes 
 
 ## Usage
 ### 1. Build and Push the Delve Image
-Execute the `build_delve_image.sh` script. It will build the Delve image, push it to the specified registry, generate the Kubernetes Pod manifest (`go-app-with-delve.yaml`), and create the `delve-debug.sh` script.
-\```sh
+Execute the `build_delve_image.sh` script. It will build the Delve image, push it to the specified registry, generate the Kubernetes Pod manifest (`target-go-app-with-delve.yaml`), and create the `delve-debug.sh` script.
+```sh
 ./build_delve_image.sh
-\```
+```
 
 ### 2. Deploy the Kubernetes Pod
-Deploy the generated Pod manifest to your cluster. The manifest includes both the Go application and the Delve debugger.
-\```sh
-kubectl apply -f go-app-with-delve.yaml
-\```
+Deploy the generated Pod manifest to your cluster. The manifest includes the target Go application and the Delve debugger.
+```sh
+kubectl apply -f target-go-app-with-delve.yaml
+```
 
 ### 3. Debug with Delve
 Run the generated `delve-debug.sh` script to set up port-forwarding and connect your local Delve client to the remote Delve server within the Kubernetes cluster.
-\```sh
+```sh
 ./delve-debug.sh
-\```
+```
 
 ## Security Considerations
 - **Privileged Containers:** The Delve container is running with a privileged security context. This configuration can expose the cluster to security risks. It’s crucial to review the security settings, follow the principle of least privilege, and apply role-based access controls (RBAC) and Pod Security Policies (PSP) as needed.

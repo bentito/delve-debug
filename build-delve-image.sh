@@ -5,7 +5,7 @@ set -e
 IMAGE_NAME="delve-debugger"
 TAG="latest"
 REGISTRY="quay.io/btofel"
-GO_APP_IMAGE="golang:latest"
+TARGET_GO_APP_IMAGE="registry.redhat.io/quay/quay-operator-rhel8@sha256:b0aeb0a047adadf3e25f9a1abd24fa9299ee06c13976470465cb5fd155ff44fb"
 LISTEN_PORT="2345"
 
 # Generate the entrypoint.sh script
@@ -32,15 +32,15 @@ podman push ${REGISTRY}/${IMAGE_NAME}:${TAG}
 echo "Delve image has been built and pushed as ${REGISTRY}/${IMAGE_NAME}:${TAG}"
 
 # Create the Kubernetes Pod manifest
-cat <<EOL > go-app-with-delve.yaml
+cat <<EOL > target-go-app-with-delve.yaml
 apiVersion: v1
 kind: Pod
 metadata:
-  name: go-app-with-delve
+  name: target-go-app-with-delve
 spec:
   containers:
-    - name: go-app
-      image: ${GO_APP_IMAGE}
+    - name: target-go-app
+      image: ${TARGET_GO_APP_IMAGE}
     - name: delve
       image: ${REGISTRY}/${IMAGE_NAME}:${TAG}
       env:
@@ -52,7 +52,7 @@ spec:
         - containerPort: ${LISTEN_PORT}
 EOL
 
-echo "Kubernetes Pod manifest has been generated as go-app-with-delve.yaml"
+echo "Kubernetes Pod manifest has been generated as target-go-app-with-delve.yaml"
 
 # Create the Delve debug script
 cat <<EOL > delve-debug.sh
@@ -61,7 +61,7 @@ set -e
 
 # Define variables
 NAMESPACE="default"
-POD_NAME="go-app-with-delve"
+POD_NAME="target-go-app-with-delve"
 LISTEN_PORT="${LISTEN_PORT}"
 
 # Start port-forwarding
