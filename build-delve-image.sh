@@ -8,16 +8,28 @@ REGISTRY="quay.io/btofel"
 GO_APP_IMAGE="golang:latest"
 LISTEN_PORT="2345"
 
+# Generate the entrypoint.sh script
+cat <<EOL > entrypoint.sh
+#!/bin/sh
+
+# Use default port $LISTEN_PORT if not set
+LISTEN_PORT=\${LISTEN_PORT:-$LISTEN_PORT}
+
+exec dlv --headless --listen=:\$LISTEN_PORT --api-version=2
+EOL
+
+chmod +x entrypoint.sh
+
 # Build the image
 podman build -t ${IMAGE_NAME}:${TAG} .
 
 # Tag the image for the registry
 podman tag ${IMAGE_NAME}:${TAG} ${REGISTRY}/${IMAGE_NAME}:${TAG}
 
-# Uncomment the below line to push the image to the registry if needed.
+# Push the image to the registry
 podman push ${REGISTRY}/${IMAGE_NAME}:${TAG}
 
-echo "Delve image has been built and tagged as ${REGISTRY}/${IMAGE_NAME}:${TAG}"
+echo "Delve image has been built and pushed as ${REGISTRY}/${IMAGE_NAME}:${TAG}"
 
 # Create the Kubernetes Pod manifest
 cat <<EOL > go-app-with-delve.yaml
