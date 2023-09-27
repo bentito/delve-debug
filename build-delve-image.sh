@@ -15,7 +15,7 @@ podman build -t ${IMAGE_NAME}:${TAG} .
 podman tag ${IMAGE_NAME}:${TAG} ${REGISTRY}/${IMAGE_NAME}:${TAG}
 
 # Uncomment the below line to push the image to the registry if needed.
-# podman push ${REGISTRY}/${IMAGE_NAME}:${TAG}
+podman push ${REGISTRY}/${IMAGE_NAME}:${TAG}
 
 echo "Delve image has been built and tagged as ${REGISTRY}/${IMAGE_NAME}:${TAG}"
 
