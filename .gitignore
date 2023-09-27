@@ -1,4 +1,4 @@
 # Ignore work products of the script
 delve-debug.sh
-go-app-with-delve.yaml
+target-go-app-with-delve.yaml
 entrypoint.sh
