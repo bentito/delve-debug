@@ -11,11 +11,26 @@ LISTEN_PORT="2345"
 # Generate the entrypoint.sh script
 cat <<EOL > entrypoint.sh
 #!/bin/sh
-
-# Use default port $LISTEN_PORT if not set
+# Use default port \$LISTEN_PORT if not set
 LISTEN_PORT=\${LISTEN_PORT:-$LISTEN_PORT}
 
-exec dlv --headless --listen=:\$LISTEN_PORT --api-version=2
+# Find the main application process using /proc filesystem
+TARGET_PID=\$(for prc in /proc/[0-9]*; do
+    [ -f "\$prc/cmdline" ] || continue
+    cmd=\$(tr '\0' ' ' < "\$prc/cmdline")
+    case "\$cmd" in
+        *bash*|*sh*|*init*|*pod*) continue ;;
+        *) echo \$prc ;;
+    esac
+done | sed 's|/proc/||' | head -n 1)
+
+# Check if TARGET_PID is found
+if [ -z "\$TARGET_PID" ]; then
+  echo "Error: target application process not found."
+  exit 1
+fi
+
+exec dlv --headless --listen=:\$LISTEN_PORT --api-version=2 attach \$TARGET_PID
 EOL
 
 chmod +x entrypoint.sh
@@ -38,6 +53,7 @@ kind: Pod
 metadata:
   name: target-go-app-with-delve
 spec:
+  shareProcessNamespace: true
   containers:
     - name: target-go-app
       image: ${TARGET_GO_APP_IMAGE}
@@ -64,17 +80,40 @@ NAMESPACE="default"
 POD_NAME="target-go-app-with-delve"
 LISTEN_PORT="${LISTEN_PORT}"
 
+# Check if the port is already in use by a kubectl port-forward command
+EXISTING_PF_PID=\$(lsof -ti :\$LISTEN_PORT -sTCP:LISTEN | grep "\$(pgrep kubectl)")
+if [ ! -z "\$EXISTING_PF_PID" ]; then
+    kill \$EXISTING_PF_PID # Terminate the existing port-forward command
+fi
+
 # Start port-forwarding
 kubectl port-forward --namespace=\$NAMESPACE \$POD_NAME \$LISTEN_PORT:\$LISTEN_PORT &
 
 # Allow some time for port-forwarding to start
 sleep 2
 
-# Connect local Delve to the remote Delve instance
-dlv connect localhost:\$LISTEN_PORT
+# Run expect to interact with dlv
+FUNC_LIST=\$(expect -c "
+spawn dlv connect localhost:\$LISTEN_PORT
+expect \"(dlv)\"
+send \"funcs boringcrypto.\r\"
+expect \"(dlv)\"
+send \"exit\r\"
+expect eof
+")
+
+# Kill the background port-forwarding process
+kill \$!
+
+# Check if the list contains any functions
+if [[ \$FUNC_LIST == *\"Function \"* ]]; then
+    exit 0 # Exit without an error as the package is used
+else
+    echo "Failure: boringcrypto. package is NOT used."
+    exit 1 # Exit with an error as the package is not used
+fi
 EOL
 
 chmod +x delve-debug.sh
 
 echo "Delve debug script has been generated as delve-debug.sh"
-

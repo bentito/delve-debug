@@ -1,13 +1,13 @@
-# Use the official golang image as a base image
 FROM golang:1.17
 
-# Download and install Delve
+# Install Delve
 RUN go install github.com/go-delve/delve/cmd/dlv@latest
 
-# Copy the known entrypoint.sh into the image and give it execute permission
+# Copy the entrypoint script
 COPY entrypoint.sh /entrypoint.sh
+
+# Make the script executable
 RUN chmod +x /entrypoint.sh
 
-# Set the entry point of the container to the known entrypoint.sh
+# Set the entrypoint script as the entrypoint of the container
 ENTRYPOINT ["/entrypoint.sh"]
-
