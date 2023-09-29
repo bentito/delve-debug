@@ -11,37 +11,17 @@ LISTEN_PORT="2345"
 # Generate the entrypoint.sh script
 cat <<EOL > entrypoint.sh
 #!/bin/sh
-# Use default port \$LISTEN_PORT if not set
 LISTEN_PORT=\${LISTEN_PORT:-$LISTEN_PORT}
-
-# Find the main application process using /proc filesystem
-TARGET_PID=\$(for prc in /proc/[0-9]*; do
-    [ -f "\$prc/cmdline" ] || continue
-    cmd=\$(tr '\0' ' ' < "\$prc/cmdline")
-    case "\$cmd" in
-        *bash*|*sh*|*init*|*pod*) continue ;;
-        *) echo \$prc ;;
-    esac
-done | sed 's|/proc/||' | head -n 1)
-
-# Check if TARGET_PID is found
-if [ -z "\$TARGET_PID" ]; then
-  echo "Error: target application process not found."
-  exit 1
-fi
-
+TARGET_PID=\$(for prc in /proc/[0-9]*; do [ -f "\$prc/cmdline" ] || continue; cmd=\$(tr '\0' ' ' < "\$prc/cmdline"); case "\$cmd" in *bash*|*sh*|*init*|*pod*) continue ;; *) echo \$prc ;; esac; done | sed 's|/proc/||' | head -n 1)
+if [ -z "\$TARGET_PID" ]; then echo "Error: target application process not found."; exit 1; fi
 exec dlv --headless --listen=:\$LISTEN_PORT --api-version=2 attach \$TARGET_PID
 EOL
 
 chmod +x entrypoint.sh
 
-# Build the image
+# Build, tag and push the image
 podman build -t ${IMAGE_NAME}:${TAG} .
-
-# Tag the image for the registry
 podman tag ${IMAGE_NAME}:${TAG} ${REGISTRY}/${IMAGE_NAME}:${TAG}
-
-# Push the image to the registry
 podman push ${REGISTRY}/${IMAGE_NAME}:${TAG}
 
 echo "Delve image has been built and pushed as ${REGISTRY}/${IMAGE_NAME}:${TAG}"
@@ -73,45 +53,63 @@ echo "Kubernetes Pod manifest has been generated as target-go-app-with-delve.yam
 # Create the Delve debug script
 cat <<EOL > delve-debug.sh
 #!/bin/bash
-set -e
+NAMESPACE=default
+POD_NAME=target-go-app-with-delve
+LISTEN_PORT=2345
+PACKAGE_NAME=boringcrypto
+DEBUG=0
 
-# Define variables
-NAMESPACE="default"
-POD_NAME="target-go-app-with-delve"
-LISTEN_PORT="${LISTEN_PORT}"
-
-# Check if the port is already in use by a kubectl port-forward command
-EXISTING_PF_PID=\$(lsof -ti :\$LISTEN_PORT -sTCP:LISTEN | grep "\$(pgrep kubectl)")
-if [ ! -z "\$EXISTING_PF_PID" ]; then
-    kill \$EXISTING_PF_PID # Terminate the existing port-forward command
+if [[ \$1 == "--debug" ]]; then
+    DEBUG=1
 fi
 
-# Start port-forwarding
-kubectl port-forward --namespace=\$NAMESPACE \$POD_NAME \$LISTEN_PORT:\$LISTEN_PORT &
+function debug_output {
+    if [[ \$DEBUG -eq 1 ]]; then
+        echo "\$1"
+    fi
+}
 
-# Allow some time for port-forwarding to start
-sleep 2
+debug_output "Checking for existing port-forward on port \$LISTEN_PORT."
 
-# Run expect to interact with dlv
-FUNC_LIST=\$(expect -c "
-spawn dlv connect localhost:\$LISTEN_PORT
-expect \"(dlv)\"
-send \"funcs boringcrypto.\r\"
-expect \"(dlv)\"
-send \"exit\r\"
-expect eof
-")
+if pgrep kubectl > /dev/null; then
+    debug_output "A kubectl command is running. Trying to kill existing port-forward on port \$LISTEN_PORT."
+    lsof -ti :\$LISTEN_PORT | while read -r pid; do
+        kill \$pid
+    done
+    sleep 2
+fi
 
-# Kill the background port-forwarding process
-kill \$!
+debug_output "Starting port-forward."
 
-# Check if the list contains any functions
-if [[ \$FUNC_LIST == *\"Function \"* ]]; then
-    exit 0 # Exit without an error as the package is used
+if [[ \$DEBUG -eq 1 ]]; then
+    kubectl port-forward --namespace=\$NAMESPACE \$POD_NAME \$LISTEN_PORT:\$LISTEN_PORT &
 else
-    echo "Failure: boringcrypto. package is NOT used."
-    exit 1 # Exit with an error as the package is not used
+    kubectl port-forward --namespace=\$NAMESPACE \$POD_NAME \$LISTEN_PORT:\$LISTEN_PORT &> /dev/null &
 fi
+
+sleep 5
+
+DLV_OUTPUT=\$(expect << EOF
+spawn dlv connect localhost:\$LISTEN_PORT
+expect "Type 'help' for list of commands."
+send "funcs \$PACKAGE_NAME.*\r"
+expect "(dlv)"
+send "exit\r"
+expect eof
+EOF
+)
+
+if ! echo "\$DLV_OUTPUT" | grep -v '^(dlv)' | grep -q "\${PACKAGE_NAME}"; then
+    echo "Failure: \$PACKAGE_NAME package is NOT used."
+    debug_output "Raw Output from dlv command with package \$PACKAGE_NAME.:"
+    debug_output "\$DLV_OUTPUT"
+    kill %1
+    exit 1
+fi
+
+echo "Success: \$PACKAGE_NAME package is used."
+kill %1
+exit 0
 EOL
 
 chmod +x delve-debug.sh
