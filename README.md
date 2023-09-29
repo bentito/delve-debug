@@ -3,7 +3,9 @@
 The idea here is to run Delve the Go debugger in two place, as a container aside the target image under test container, and locally so Delve can be scripted to assert the `boringcyrpto` package is loaded at run-time.
 We attempt to automate attaching to the correct binary from the Delve container. You should configure some of the environment variables
 used in `build_delve_image.sh`, as follows:
+
 `REGISTRY` - where to push the delve debugger image;
+
 `TARGET_GO_APP_IMAGE` - the image under test
 
 ## Components
