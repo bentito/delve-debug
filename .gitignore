@@ -2,3 +2,4 @@
 delve-debug.sh
 target-go-app-with-delve.yaml
 entrypoint.sh
+/.idea/
